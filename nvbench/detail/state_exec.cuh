@@ -139,21 +139,33 @@ void state::exec(ExecTags tags, KernelLauncher &&kernel_launcher)
   }
   else
   {
+#ifdef NVBENCH_HAS_CUPTI
+    if (this->is_cupti_required() && !this->get_run_once())
+    {
+      if constexpr (tags & timer)
+      {
+        using measure_t = nvbench::detail::measure_cupti<KL>;
+        measure_t measure{*this, kernel_launcher};
+        measure();
+      }
+      else
+      {
+        using wrapper_t = nvbench::detail::kernel_launch_timer_wrapper<KL>;
+        wrapper_t wrapper{kernel_launcher};
+
+        using measure_t = nvbench::detail::measure_cupti<wrapper_t>;
+        measure_t measure{*this, wrapper};
+        measure();
+      }
+    }
+#endif
+
     if constexpr (tags & cold) // Prevent instantiation when not needed
     {
       static_assert(!(tags & no_gpu), "Cold measurement doesn't support the `no_gpu` exec_tag.");
 
       if constexpr (tags & timer)
       {
-#ifdef NVBENCH_HAS_CUPTI
-        if (this->is_cupti_required() && !this->get_run_once())
-        {
-          using measure_t = nvbench::detail::measure_cupti<KL>;
-          measure_t measure{*this, kernel_launcher};
-          measure();
-        }
-#endif
-
         using measure_t = nvbench::detail::measure_cold<KL>;
         measure_t measure{*this, kernel_launcher};
         measure();
@@ -162,15 +174,6 @@ void state::exec(ExecTags tags, KernelLauncher &&kernel_launcher)
       { // Need to wrap the kernel launcher with a timer wrapper:
         using wrapper_t = nvbench::detail::kernel_launch_timer_wrapper<KL>;
         wrapper_t wrapper{kernel_launcher};
-
-#ifdef NVBENCH_HAS_CUPTI
-        if (this->is_cupti_required() && !this->get_run_once())
-        {
-          using measure_t = nvbench::detail::measure_cupti<wrapper_t>;
-          measure_t measure{*this, wrapper};
-          measure();
-        }
-#endif
 
         using measure_t = nvbench::detail::measure_cold<wrapper_t>;
         measure_t measure(*this, wrapper);
